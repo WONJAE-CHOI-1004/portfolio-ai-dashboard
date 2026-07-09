@@ -1,0 +1,7 @@
+{
+  "holdings": [
+    {"query": "Apple", "ticker": "AAPL", "shares": 10, "avg_cost": 180},
+    {"query": "Microsoft", "ticker": "MSFT", "shares": 5, "avg_cost": 400},
+    {"query": "SPDR Gold Shares", "ticker": "GLD", "shares": 2, "avg_cost": 300}
+  ]
+}

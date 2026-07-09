@@ -1,0 +1,24 @@
+# === 비밀/개인정보 — 절대 커밋 금지 ===
+# (주석은 반드시 줄 맨 앞에! 규칙 뒤 인라인 주석은 패턴을 망가뜨림)
+.env
+.env.*
+!.env.example
+# Gmail 앱 비밀번호 포함
+email_config.json
+# 개인 관심가
+watch_targets.json
+# 개인 보유 종목/수량/단가
+watchlist.json
+
+# === 생성물/캐시/로그 ===
+cache/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.streamlit/secrets.toml
+
+# OS
+Thumbs.db
+.DS_Store
