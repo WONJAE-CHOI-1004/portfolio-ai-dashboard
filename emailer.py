@@ -25,7 +25,9 @@ def load_config() -> dict:
             pass
     return {"smtp_host": "smtp.gmail.com", "smtp_port": 465,
             "sender": "", "app_password": "", "recipient": "",
-            "alerts_enabled": False, "weekly_report_enabled": False}
+            "alerts_enabled": False, "weekly_report_enabled": False,
+            "base_url": "http://localhost:8502", "owner_password": "",
+            "newsletter_to_subscribers": False}
 
 
 def save_config(cfg: dict) -> None:
@@ -33,12 +35,14 @@ def save_config(cfg: dict) -> None:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
-def send(subject: str, body: str, cfg: dict | None = None) -> tuple[bool, str]:
-    """메일 발송. (성공여부, 메시지) 반환. 실제 전송은 사용자 확인 후에만 호출."""
+def send(subject: str, body: str, cfg: dict | None = None,
+         recipient: str | None = None) -> tuple[bool, str]:
+    """메일 발송. recipient를 주면 그 주소로, 아니면 설정의 기본 수신자로.
+    (성공여부, 메시지) 반환. 실제 전송은 사용자 확인 후에만 호출."""
     cfg = cfg or load_config()
     sender = (cfg.get("sender") or "").strip()
     pw = (cfg.get("app_password") or "").strip()
-    recipient = (cfg.get("recipient") or sender).strip()
+    recipient = (recipient or cfg.get("recipient") or sender).strip()
     if not sender or not pw:
         return False, "보내는 사람 이메일과 앱 비밀번호를 먼저 설정하세요."
     if not recipient:

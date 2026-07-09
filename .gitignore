@@ -9,6 +9,8 @@ email_config.json
 watch_targets.json
 # 개인 보유 종목/수량/단가
 watchlist.json
+# 구독자 이메일(개인정보)
+subscribers.json
 
 # === 생성물/캐시/로그 ===
 cache/
