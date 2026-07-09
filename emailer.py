@@ -25,7 +25,7 @@ def load_config() -> dict:
             pass
     return {"smtp_host": "smtp.gmail.com", "smtp_port": 465,
             "sender": "", "app_password": "", "recipient": "",
-            "alerts_enabled": False}
+            "alerts_enabled": False, "weekly_report_enabled": False}
 
 
 def save_config(cfg: dict) -> None:

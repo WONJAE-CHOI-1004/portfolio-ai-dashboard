@@ -49,6 +49,19 @@ def main() -> int:
     else:
         print("완료.")
     print(f"저장: {pipeline.LATEST_PATH}")
+
+    # 주간 리포트 자동 메일(설정에서 켠 경우에만)
+    try:
+        import emailer
+        cfg = emailer.load_config()
+        if cfg.get("weekly_report_enabled") and cfg.get("sender") and cfg.get("app_password"):
+            ok, m = emailer.send(emailer.default_subject(result),
+                                 emailer.default_body(result), cfg)
+            print(f"[주간 메일] {m}")
+        else:
+            print("[주간 메일] 미설정/비활성 — 발송 건너뜀")
+    except Exception as e:  # noqa: BLE001
+        print(f"[주간 메일] 발송 시도 실패: {e}")
     return 0
 
 
