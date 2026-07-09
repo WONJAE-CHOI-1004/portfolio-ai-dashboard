@@ -27,7 +27,8 @@ def load_config() -> dict:
             "sender": "", "app_password": "", "recipient": "",
             "alerts_enabled": False, "weekly_report_enabled": False,
             "base_url": "http://localhost:8502", "owner_password": "",
-            "newsletter_to_subscribers": False}
+            "newsletter_to_subscribers": False,
+            "email_backend": "gmail", "api_key": "", "sender_name": "포트폴리오 대시보드"}
 
 
 def save_config(cfg: dict) -> None:
@@ -37,20 +38,32 @@ def save_config(cfg: dict) -> None:
 
 def send(subject: str, body: str, cfg: dict | None = None,
          recipient: str | None = None) -> tuple[bool, str]:
-    """메일 발송. recipient를 주면 그 주소로, 아니면 설정의 기본 수신자로.
-    (성공여부, 메시지) 반환. 실제 전송은 사용자 확인 후에만 호출."""
+    """메일 발송. 백엔드(gmail/brevo/sendgrid)에 따라 발송 경로가 달라진다.
+    recipient를 주면 그 주소로, 아니면 설정의 기본 수신자로. (성공여부, 메시지) 반환."""
     cfg = cfg or load_config()
+    backend = (cfg.get("email_backend") or "gmail").lower()
     sender = (cfg.get("sender") or "").strip()
-    pw = (cfg.get("app_password") or "").strip()
     recipient = (recipient or cfg.get("recipient") or sender).strip()
-    if not sender or not pw:
-        return False, "보내는 사람 이메일과 앱 비밀번호를 먼저 설정하세요."
+    sender_name = cfg.get("sender_name") or "포트폴리오 대시보드"
+    if not sender:
+        return False, "보내는 사람(발신자) 이메일을 설정하세요."
     if not recipient:
         return False, "받는 사람 이메일이 없습니다."
 
+    if backend == "brevo":
+        return _send_brevo(cfg, sender, sender_name, recipient, subject, body)
+    if backend == "sendgrid":
+        return _send_sendgrid(cfg, sender, recipient, subject, body)
+    return _send_gmail(cfg, sender, sender_name, recipient, subject, body)
+
+
+def _send_gmail(cfg, sender, sender_name, recipient, subject, body):
+    pw = (cfg.get("app_password") or "").strip()
+    if not pw:
+        return False, "Gmail 앱 비밀번호를 먼저 설정하세요."
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = formataddr(("포트폴리오 대시보드", sender))
+    msg["From"] = formataddr((sender_name, sender))
     msg["To"] = recipient
     host = cfg.get("smtp_host", "smtp.gmail.com")
     port = int(cfg.get("smtp_port", 465))
@@ -58,11 +71,62 @@ def send(subject: str, body: str, cfg: dict | None = None,
         with smtplib.SMTP_SSL(host, port, timeout=20) as s:
             s.login(sender, pw)
             s.sendmail(sender, [recipient], msg.as_string())
-        return True, f"{recipient} 로 발송 완료"
+        return True, f"{recipient} 로 발송 완료 (Gmail)"
     except smtplib.SMTPAuthenticationError:
         return False, "인증 실패: Gmail '앱 비밀번호'가 맞는지 확인하세요(일반 비번 아님)."
     except Exception as e:  # noqa: BLE001
         return False, f"발송 실패: {e}"
+
+
+def _send_brevo(cfg, sender, sender_name, recipient, subject, body):
+    """Brevo(구 Sendinblue) HTTP API 발송. 무료 300통/일."""
+    import requests
+    key = (cfg.get("api_key") or "").strip()
+    if not key:
+        return False, "Brevo API 키를 설정하세요."
+    try:
+        r = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": key, "content-type": "application/json",
+                     "accept": "application/json"},
+            json={"sender": {"email": sender, "name": sender_name},
+                  "to": [{"email": recipient}],
+                  "subject": subject, "textContent": body},
+            timeout=20)
+        if r.status_code in (200, 201):
+            return True, f"{recipient} 로 발송 완료 (Brevo)"
+        if r.status_code == 401:
+            return False, "Brevo 인증 실패: API 키를 확인하세요."
+        if r.status_code == 400 and "sender" in r.text.lower():
+            return False, "Brevo: 발신자 이메일이 인증되지 않았어요. Brevo에서 발신자 인증을 먼저 하세요."
+        return False, f"Brevo 발송 실패({r.status_code}): {r.text[:200]}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"Brevo 발송 오류: {e}"
+
+
+def _send_sendgrid(cfg, sender, recipient, subject, body):
+    """SendGrid HTTP API 발송. 무료 100통/일."""
+    import requests
+    key = (cfg.get("api_key") or "").strip()
+    if not key:
+        return False, "SendGrid API 키를 설정하세요."
+    try:
+        r = requests.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json"},
+            json={"personalizations": [{"to": [{"email": recipient}]}],
+                  "from": {"email": sender},
+                  "subject": subject,
+                  "content": [{"type": "text/plain", "value": body}]},
+            timeout=20)
+        if r.status_code in (200, 202):
+            return True, f"{recipient} 로 발송 완료 (SendGrid)"
+        if r.status_code in (401, 403):
+            return False, "SendGrid 인증 실패: API 키/발신자 인증을 확인하세요."
+        return False, f"SendGrid 발송 실패({r.status_code}): {r.text[:200]}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"SendGrid 발송 오류: {e}"
 
 
 def default_subject(result: dict) -> str:
