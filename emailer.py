@@ -16,19 +16,34 @@ from email.utils import formataddr
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "email_config.json")
 
 
+# 클라우드 시크릿(환경변수)로 이메일 설정을 덮어쓸 매핑
+_ENV_OVERLAY = {
+    "email_backend": "EMAIL_BACKEND", "api_key": "EMAIL_API_KEY",
+    "sender": "EMAIL_SENDER", "recipient": "EMAIL_RECIPIENT",
+    "app_password": "GMAIL_APP_PASSWORD", "owner_password": "OWNER_PASSWORD",
+    "base_url": "BASE_URL",
+}
+
+
 def load_config() -> dict:
+    cfg = {"smtp_host": "smtp.gmail.com", "smtp_port": 465,
+           "sender": "", "app_password": "", "recipient": "",
+           "alerts_enabled": False, "weekly_report_enabled": False,
+           "base_url": "http://localhost:8502", "owner_password": "",
+           "newsletter_to_subscribers": False,
+           "email_backend": "gmail", "api_key": "", "sender_name": "포트폴리오 대시보드"}
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, encoding="utf-8-sig") as f:
-                return json.load(f)
+                cfg.update(json.load(f))
         except Exception:
             pass
-    return {"smtp_host": "smtp.gmail.com", "smtp_port": 465,
-            "sender": "", "app_password": "", "recipient": "",
-            "alerts_enabled": False, "weekly_report_enabled": False,
-            "base_url": "http://localhost:8502", "owner_password": "",
-            "newsletter_to_subscribers": False,
-            "email_backend": "gmail", "api_key": "", "sender_name": "포트폴리오 대시보드"}
+    # 클라우드 배포: 파일이 없거나 값이 비면 환경변수/시크릿으로 채움
+    for cfg_key, env_key in _ENV_OVERLAY.items():
+        v = os.environ.get(env_key)
+        if v:
+            cfg[cfg_key] = v
+    return cfg
 
 
 def save_config(cfg: dict) -> None:

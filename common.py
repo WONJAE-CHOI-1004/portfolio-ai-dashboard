@@ -42,7 +42,30 @@ def load_env() -> None:
         load_dotenv(parent_env)  # 로컬에 없는 값만 보완
 
 
+# Streamlit Cloud 등 호스팅 시크릿(st.secrets)을 os.environ으로 브리지.
+# 로컬에선 secrets.toml이 없어 조용히 무시된다.
+_SECRET_KEYS = [
+    "GOOGLE_API_KEY", "TRADINGAGENTS_QUICK_THINK_LLM", "TRADINGAGENTS_DEEP_THINK_LLM",
+    "EMAIL_BACKEND", "EMAIL_API_KEY", "EMAIL_SENDER", "EMAIL_RECIPIENT",
+    "GMAIL_APP_PASSWORD", "OWNER_PASSWORD", "BASE_URL",
+]
+
+
+def apply_secrets() -> None:
+    try:
+        import streamlit as st
+    except Exception:
+        return
+    for k in _SECRET_KEYS:
+        try:
+            if not os.environ.get(k) and k in st.secrets:
+                os.environ[k] = str(st.secrets[k])
+        except Exception:
+            break  # secrets.toml 없음 → 로컬, 무시
+
+
 load_env()
+apply_secrets()
 
 QUICK_MODEL = os.environ.get("TRADINGAGENTS_QUICK_THINK_LLM", "gemini-3.1-flash-lite")
 DEEP_MODEL = os.environ.get("TRADINGAGENTS_DEEP_THINK_LLM", "gemini-3.5-flash")
