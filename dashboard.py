@@ -20,6 +20,7 @@ import pipeline
 import analyzer
 import emailer
 import subscribers
+import store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WATCHLIST_PATH = os.path.join(HERE, "watchlist.json")
@@ -64,40 +65,111 @@ st.title("📈 내 포트폴리오 AI 리포트")
 st.caption("종목명을 여러 개 입력하면 티커를 자동으로 찾아 AI 리포트와 종목 간 시너지를 만들어 드려요. "
            "⚠️ 참고용 분석이며 투자 판단·책임은 본인에게 있습니다.")
 
-# ── 공개 영역: 구독 확인/해지(링크 클릭) + 구독 신청 ─────────────────
+# ── 공개 영역: 멀티유저 — [이메일 + 내 포트폴리오] 등록/확인/수정/해지 ──
 _ecfg = emailer.load_config()
 _qp = st.query_params
+
+
+def _rows_to_holdings(df) -> list[dict]:
+    out = []
+    for r in df.to_dict("records"):
+        if (r.get("query") or "").strip() or (r.get("ticker") or "").strip():
+            out.append({"query": (r.get("query") or "").strip(),
+                        "ticker": (r.get("ticker") or "").strip(),
+                        "shares": r.get("shares"), "avg_cost": r.get("avg_cost")})
+    return out
+
+
+# 링크 처리: 구독 확인 / 수신거부
 if "confirm" in _qp:
-    _ok, _em = subscribers.confirm(_qp["confirm"])
+    try:
+        _ok, _em = store.confirm(_qp["confirm"])
+    except Exception:  # noqa: BLE001
+        _ok, _em = False, ""
     if _ok:
-        st.success(f"✅ 구독이 확정되었습니다: {_em}")
+        st.success(f"✅ 구독이 확정되었습니다: {_em} — 이제 정기 리포트를 보내드려요!")
     else:
-        st.error("확인 링크가 유효하지 않거나 만료되었습니다.")
+        st.error("확인 링크가 유효하지 않아요.")
 if "unsub" in _qp:
-    _ok, _em = subscribers.unsubscribe(_qp["unsub"])
+    try:
+        _ok, _em = store.unsubscribe(_qp["unsub"])
+    except Exception:  # noqa: BLE001
+        _ok, _em = False, ""
     if _ok:
         st.info(f"수신거부되었습니다: {_em} — 더 이상 메일을 보내지 않아요.")
     else:
-        st.error("수신거부 링크가 유효하지 않습니다.")
+        st.error("수신거부 링크가 유효하지 않아요.")
 
-with st.expander("📬 리포트 이메일 구독하기",
-                 expanded=("confirm" in _qp or "unsub" in _qp)):
-    st.caption("이메일을 등록하면 확인 메일이 갑니다. 링크를 클릭해야 구독이 완료돼요(원클릭 수신거부 가능).")
-    _sub_email = st.text_input("이메일 주소", key="sub_email")
-    if st.button("구독 신청"):
-        if not subscribers.valid_email(_sub_email):
+# 편집 모드(매직 링크)면 기존 포트폴리오 로드
+_edit_token = _qp.get("edit", "")
+_existing = None
+if _edit_token:
+    try:
+        _existing = store.get_by_token(_edit_token)
+    except Exception:  # noqa: BLE001
+        _existing = None
+
+st.subheader("📊 내 포트폴리오로 맞춤 리포트 받기")
+if _existing:
+    st.caption(f"**{_existing['email']}** 님의 포트폴리오예요. 종목을 바꾸고 저장하면 다음 리포트에 반영돼요.")
+    _seed = _existing.get("holdings") or []
+else:
+    st.caption("내 종목을 입력하고 이메일을 등록하면, 확인 후 정기적으로 **내 포트폴리오 AI 리포트**를 보내드려요. "
+               "⚠️ 참고용이며 투자 판단·책임은 본인에게 있습니다.")
+    _seed = []
+if not _seed:
+    _seed = [{"query": "", "ticker": "", "shares": None, "avg_cost": None}]
+
+_pub_seed_df = pd.DataFrame(_seed)
+for _c in ("query", "ticker", "shares", "avg_cost"):
+    if _c not in _pub_seed_df.columns:
+        _pub_seed_df[_c] = None
+_pub_df = st.data_editor(
+    _pub_seed_df[["query", "ticker", "shares", "avg_cost"]],
+    num_rows="dynamic", use_container_width=True, key="pub_editor",
+    column_config={
+        "query": st.column_config.TextColumn("종목명", help="예: 에퀴노르, apple"),
+        "ticker": st.column_config.TextColumn("티커(선택)", help="알면 직접 입력"),
+        "shares": st.column_config.NumberColumn("수량", min_value=0.0, step=1.0),
+        "avg_cost": st.column_config.NumberColumn("평균단가", min_value=0.0),
+    })
+
+if _existing:
+    if st.button("💾 내 포트폴리오 저장"):
+        try:
+            store.update_holdings(_edit_token, _rows_to_holdings(_pub_df))
+            st.success("저장했어요! 다음 리포트부터 반영돼요.")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"저장 실패: {e}")
+else:
+    _pub_email = st.text_input("이메일 주소", key="pub_email")
+    if st.button("📩 구독 신청 (확인 메일 발송)", type="primary"):
+        _hold = _rows_to_holdings(_pub_df)
+        if not subscribers.valid_email(_pub_email):
             st.error("올바른 이메일 주소를 입력하세요.")
-        elif not emailer.is_configured(_ecfg):
-            st.error("아직 발송 설정이 안 됐어요. (관리자 문의)")
+        elif not _hold:
+            st.error("종목을 하나 이상 입력하세요.")
+        elif not (store.is_configured() and emailer.is_configured(_ecfg)):
+            st.error("서비스 설정이 아직 안 됐어요. (관리자 문의)")
         else:
-            _state, _tok = subscribers.subscribe(_sub_email)
+            try:
+                _state, _tok = store.register(_pub_email, _hold)
+            except Exception as e:  # noqa: BLE001
+                _state, _tok = None, ""
+                st.error(f"등록 실패: {e}")
             if _state == "already":
-                st.info("이미 구독 중인 이메일이에요.")
-            else:
-                _ok, _msg = subscribers.send_confirmation(
-                    _sub_email, _tok, _ecfg.get("base_url", ""), _ecfg)
+                st.info("이미 구독 중인 이메일이에요. 종목을 바꾸려면 확인 메일의 '수정' 링크를 쓰세요.")
+            elif _state:
+                _b = _ecfg.get("base_url", "").rstrip("/")
+                _body = (
+                    "포트폴리오 리포트 구독을 신청하셨습니다.\n\n"
+                    f"① 아래 링크를 클릭하면 구독이 확정됩니다:\n{_b}/?confirm={_tok}\n\n"
+                    f"② 나중에 종목을 바꾸려면 이 링크로 접속하세요(북마크 추천):\n{_b}/?edit={_tok}\n\n"
+                    "본인이 신청하지 않았다면 이 메일을 무시하세요.\n— 포트폴리오 AI 리포트")
+                _ok, _msg = emailer.send("[구독 확인] 포트폴리오 리포트", _body, _ecfg,
+                                         recipient=_pub_email)
                 if _ok:
-                    st.success("확인 메일을 보냈어요! 편지함의 링크를 클릭하면 구독 완료됩니다.")
+                    st.success("확인 메일을 보냈어요! 편지함의 ① 링크를 클릭하면 구독 완료됩니다.")
                 else:
                     st.error(f"확인 메일 발송 실패: {_msg}")
 
@@ -616,34 +688,40 @@ if st.button("📧 이메일 보내기", type="primary"):
     (st.success if ok else st.error)(msg)
 
 
-# ── 9) 구독자 관리 & 뉴스레터 발송 (소유자용) ────────────────────────
+# ── 9) 구독자 관리 & 사용자별 맞춤 리포트 발송 (소유자용) ─────────────
 st.markdown("---")
-st.subheader("9️⃣ 구독자 관리 & 뉴스레터 발송")
-_sc = subscribers.counts()
+st.subheader("9️⃣ 구독자 관리 & 맞춤 리포트 발송")
+try:
+    _sc = store.counts()
+    _confirmed_users = store.list_confirmed()
+except Exception as e:  # noqa: BLE001
+    _sc, _confirmed_users = {"confirmed": 0, "pending": 0, "unsubscribed": 0}, []
+    st.error(f"구독자 저장소(Supabase) 연결 실패: {e}")
 sm1, sm2, sm3 = st.columns(3)
 sm1.metric("확인된 구독자", _sc["confirmed"])
 sm2.metric("확인 대기", _sc["pending"])
 sm3.metric("수신거부", _sc["unsubscribed"])
-st.caption(f"구독/해지 링크 기준 URL: {_ecfg.get('base_url','(미설정)')} "
-           "— 배포 후 실제 주소로 설정해야 링크가 작동해요.")
+st.caption(f"구독/확인/수정/해지 링크 기준 URL: {_ecfg.get('base_url','(미설정)')}")
 
-_nl_subj = st.text_input("뉴스레터 제목", value=emailer.default_subject(result), key="nl_subj")
-if "nl_body" not in st.session_state:
-    st.session_state.nl_body = emailer.default_body(result)
-if st.button("🔄 뉴스레터 초안 채우기"):
-    st.session_state.nl_body = emailer.default_body(result)
-_nl_body = st.text_area("뉴스레터 본문 (각 메일에 수신거부 링크가 자동 첨부돼요)",
-                        key="nl_body", height=240)
-st.warning("⚠️ 개인 Gmail은 하루 발송 한도(~500)·스팸 차단 위험이 있어요. "
-           "구독자가 많아지면 전용 이메일 서비스(SendGrid/Brevo 등)로 바꿔야 해요.")
-if st.button(f"📤 확인된 구독자 {_sc['confirmed']}명에게 발송", type="primary"):
+if _confirmed_users:
+    st.dataframe(pd.DataFrame([
+        {"이메일": u["email"], "종목 수": len(u.get("holdings") or [])}
+        for u in _confirmed_users]), use_container_width=True, hide_index=True)
+
+st.warning("⚠️ 사용자 1명당 AI 호출이 여러 번 들어가요. 무료 Gemini는 하루 한도가 있어 "
+           "구독자가 많으면 한도 초과할 수 있어요(소규모용). 개인 Gmail 대신 Brevo 권장.")
+if st.button(f"📤 확인된 구독자 {_sc['confirmed']}명에게 '각자 맞춤 리포트' 발송", type="primary"):
     if _sc["confirmed"] == 0:
         st.info("아직 확인된 구독자가 없어요.")
     else:
-        with st.spinner("발송 중..."):
-            res = subscribers.send_newsletter(
-                _nl_subj, _nl_body, _ecfg.get("base_url", ""), _ecfg)
-        st.success(f"발송 완료: 성공 {res['sent']} / 실패 {res['failed']} (총 {res['total']})")
+        import reports
+        _bar = st.progress(0.0, text="시작...")
+        res = reports.send_user_reports(
+            _ecfg.get("base_url", ""),
+            progress=lambda f, m: _bar.progress(min(f, 1.0), text=m))
+        _bar.empty()
+        st.success(f"발송 완료: 성공 {res['sent']} / 실패 {res['failed']} "
+                   f"/ 건너뜀 {res['skipped']} (총 {res['total']})")
         if res["errors"]:
             st.error("실패 목록:\n- " + "\n- ".join(res["errors"][:10]))
 
