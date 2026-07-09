@@ -112,124 +112,139 @@ if "unsub" in _qp:
     else:
         st.error("수신거부 링크가 유효하지 않아요.")
 
-# 편집 모드(매직 링크)면 기존 포트폴리오 로드
-_edit_token = _qp.get("edit", "")
-_existing = None
-if _edit_token:
-    try:
-        _existing = store.get_by_token(_edit_token)
-    except Exception:  # noqa: BLE001
-        _existing = None
-
-st.subheader("📊 내 포트폴리오로 맞춤 리포트 받기")
-if _existing:
-    st.caption(f"**{_existing['email']}** 님의 포트폴리오예요. 종목을 바꾸고 저장하면 다음 리포트에 반영돼요.")
-    _seed = _existing.get("holdings") or []
-else:
-    st.caption("내 종목을 입력하고 이메일을 등록하면, 확인 후 정기적으로 **내 포트폴리오 AI 리포트**를 보내드려요. "
-               "⚠️ 참고용이며 투자 판단·책임은 본인에게 있습니다.")
-    _seed = []
-if not _seed:
-    _seed = [{"query": "", "ticker": "", "shares": None, "avg_cost": None}]
-
-_pub_seed_df = pd.DataFrame(_seed)
-for _c in ("query", "ticker", "shares", "avg_cost"):
-    if _c not in _pub_seed_df.columns:
-        _pub_seed_df[_c] = None
-_pub_df = st.data_editor(
-    _pub_seed_df[["query", "ticker", "shares", "avg_cost"]],
-    num_rows="dynamic", use_container_width=True, key="pub_editor",
-    column_config={
-        "query": st.column_config.TextColumn("종목명", help="예: 에퀴노르, apple"),
-        "ticker": st.column_config.TextColumn("티커(선택)", help="알면 직접 입력"),
-        "shares": st.column_config.NumberColumn("수량", min_value=0.0, step=1.0),
-        "avg_cost": st.column_config.NumberColumn("평균단가", min_value=0.0),
-    })
-
-if _existing:
-    if st.button("💾 내 포트폴리오 저장"):
-        try:
-            store.update_holdings(_edit_token, _rows_to_holdings(_pub_df))
-            st.success("저장했어요! 다음 리포트부터 반영돼요.")
-        except Exception as e:  # noqa: BLE001
-            st.error(f"저장 실패: {e}")
-else:
-    _pub_email = st.text_input("이메일 주소", key="pub_email")
-    if st.button("📩 구독 신청 (확인 메일 발송)", type="primary"):
-        _hold = _rows_to_holdings(_pub_df)
-        if not subscribers.valid_email(_pub_email):
-            st.error("올바른 이메일 주소를 입력하세요.")
-        elif not _hold:
-            st.error("종목을 하나 이상 입력하세요.")
-        elif not (store.is_configured() and emailer.is_configured(_ecfg)):
-            st.error("서비스 설정이 아직 안 됐어요. (관리자 문의)")
-        else:
-            try:
-                _state, _tok = store.register(_pub_email, _hold)
-            except Exception as e:  # noqa: BLE001
-                _state, _tok = None, ""
-                st.error(f"등록 실패: {e}")
-            if _state == "already":
-                _b = _ecfg.get("base_url", "").rstrip("/")
-                _body = (f"이미 구독 중이세요. 종목을 수정하려면 이 링크로 접속하세요:\n"
-                         f"{_b}/?edit={_tok}\n\n수신거부: {_b}/?unsub={_tok}")
-                _ok, _msg = emailer.send("[포트폴리오] 종목 수정 링크", _body, _ecfg,
-                                         recipient=_pub_email)
-                if _ok:
-                    st.info("이미 구독 중이에요. **종목 수정 링크**를 메일로 보내드렸어요!")
-                else:
-                    st.info("이미 구독 중인 이메일이에요.")
-            elif _state:
-                _b = _ecfg.get("base_url", "").rstrip("/")
-                _body = (
-                    "포트폴리오 리포트 구독을 신청하셨습니다.\n\n"
-                    f"① 아래 링크를 클릭하면 구독이 확정됩니다:\n{_b}/?confirm={_tok}\n\n"
-                    f"② 나중에 종목을 바꾸려면 이 링크로 접속하세요(북마크 추천):\n{_b}/?edit={_tok}\n\n"
-                    "본인이 신청하지 않았다면 이 메일을 무시하세요.\n— 포트폴리오 AI 리포트")
-                _ok, _msg = emailer.send("[구독 확인] 포트폴리오 리포트", _body, _ecfg,
-                                         recipient=_pub_email)
-                if _ok:
-                    st.success("확인 메일을 보냈어요! 편지함의 ① 링크를 클릭하면 구독 완료됩니다.")
-                else:
-                    st.error(f"확인 메일 발송 실패: {_msg}")
-
-    # 이미 구독한 사람용: 이메일만 넣으면 '종목 수정 링크'를 메일로
-    with st.expander("✏️ 이미 구독했어요 — 종목 수정하기"):
-        st.caption("가입한 이메일을 넣으면 '종목 수정 링크'를 메일로 보내드려요.")
-        _mng_email = st.text_input("가입한 이메일", key="mng_email")
-        if st.button("🔗 종목 수정 링크 받기"):
-            try:
-                _mrow = store.get_by_email(_mng_email)
-            except Exception:  # noqa: BLE001
-                _mrow = None
-            if not subscribers.valid_email(_mng_email):
-                st.error("올바른 이메일을 입력하세요.")
-            elif not _mrow:
-                st.error("등록되지 않은 이메일이에요. 위에서 새로 구독해 주세요.")
-            else:
-                _b = _ecfg.get("base_url", "").rstrip("/")
-                _bd = (f"종목 수정 링크입니다:\n{_b}/?edit={_mrow['token']}\n\n"
-                       f"수신거부: {_b}/?unsub={_mrow['token']}")
-                _ok, _msg = emailer.send("[포트폴리오] 종목 수정 링크", _bd, _ecfg,
-                                         recipient=_mng_email)
-                if _ok:
-                    st.success("수정 링크를 메일로 보냈어요! 편지함을 확인하세요.")
-                else:
-                    st.error(f"발송 실패: {_msg}")
-
-# ── 소유자 인증 게이트 (owner_password 설정 시에만 작동; 로컬은 통과) ──
+# ── 관리자 로그인(사이드바) → 모드 결정 ───────────────────────────
+# 방문자 = 공개 구독 폼만, 관리자 = 아래 대시보드만 (겹쳐 보이지 않음)
 _owner_pw = _ecfg.get("owner_password", "")
-if _owner_pw and not st.session_state.get("is_owner"):
-    st.markdown("---")
-    st.caption("🔒 아래 대시보드는 소유자 전용이에요. (방문자는 위 구독 기능만 이용 가능)")
-    _pw_try = st.text_input("소유자 비밀번호", type="password", key="owner_pw_try")
-    if st.button("로그인") and _pw_try:
-        if _pw_try == _owner_pw:
-            st.session_state.is_owner = True
-            st.rerun()
+with st.sidebar:
+    st.header("🔑 관리자")
+    if _owner_pw:
+        if st.session_state.get("is_owner"):
+            st.success("관리자 로그인됨")
+            if st.button("로그아웃"):
+                st.session_state.is_owner = False
+                st.rerun()
         else:
-            st.error("비밀번호가 틀렸습니다.")
+            _pw_try = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
+            if st.button("로그인"):
+                if _pw_try == _owner_pw:
+                    st.session_state.is_owner = True
+                    st.rerun()
+                else:
+                    st.error("비밀번호가 틀렸습니다.")
+    else:
+        st.caption("로컬(비밀번호 미설정) — 관리자 모드")
+        st.session_state.is_owner = not st.checkbox("👥 방문자 화면 미리보기", value=False)
+_show_admin = bool(st.session_state.get("is_owner"))
+
+# ── 방문자(공개) 화면: 내 포트폴리오 등록/수정 → 여기서 끝 ─────────
+if not _show_admin:
+    # 편집 모드(매직 링크)면 기존 포트폴리오 로드
+    _edit_token = _qp.get("edit", "")
+    _existing = None
+    if _edit_token:
+        try:
+            _existing = store.get_by_token(_edit_token)
+        except Exception:  # noqa: BLE001
+            _existing = None
+
+    st.subheader("📊 내 포트폴리오로 맞춤 리포트 받기")
+    if _existing:
+        st.caption(f"**{_existing['email']}** 님의 포트폴리오예요. 종목을 바꾸고 저장하면 다음 리포트에 반영돼요.")
+        _seed = _existing.get("holdings") or []
+    else:
+        st.caption("내 종목을 입력하고 이메일을 등록하면, 확인 후 정기적으로 **내 포트폴리오 AI 리포트**를 보내드려요. "
+                   "⚠️ 참고용이며 투자 판단·책임은 본인에게 있습니다.")
+        _seed = []
+    if not _seed:
+        _seed = [{"query": "", "ticker": "", "shares": None, "avg_cost": None}]
+
+    _pub_seed_df = pd.DataFrame(_seed)
+    for _c in ("query", "ticker", "shares", "avg_cost"):
+        if _c not in _pub_seed_df.columns:
+            _pub_seed_df[_c] = None
+    _pub_df = st.data_editor(
+        _pub_seed_df[["query", "ticker", "shares", "avg_cost"]],
+        num_rows="dynamic", use_container_width=True, key="pub_editor",
+        column_config={
+            "query": st.column_config.TextColumn("종목명", help="예: 에퀴노르, apple"),
+            "ticker": st.column_config.TextColumn("티커(선택)", help="알면 직접 입력"),
+            "shares": st.column_config.NumberColumn("수량", min_value=0.0, step=1.0),
+            "avg_cost": st.column_config.NumberColumn("평균단가", min_value=0.0),
+        })
+
+    if _existing:
+        if st.button("💾 내 포트폴리오 저장"):
+            try:
+                store.update_holdings(_edit_token, _rows_to_holdings(_pub_df))
+                st.success("저장했어요! 다음 리포트부터 반영돼요.")
+            except Exception as e:  # noqa: BLE001
+                st.error(f"저장 실패: {e}")
+    else:
+        _pub_email = st.text_input("이메일 주소", key="pub_email")
+        if st.button("📩 구독 신청 (확인 메일 발송)", type="primary"):
+            _hold = _rows_to_holdings(_pub_df)
+            if not subscribers.valid_email(_pub_email):
+                st.error("올바른 이메일 주소를 입력하세요.")
+            elif not _hold:
+                st.error("종목을 하나 이상 입력하세요.")
+            elif not (store.is_configured() and emailer.is_configured(_ecfg)):
+                st.error("서비스 설정이 아직 안 됐어요. (관리자 문의)")
+            else:
+                try:
+                    _state, _tok = store.register(_pub_email, _hold)
+                except Exception as e:  # noqa: BLE001
+                    _state, _tok = None, ""
+                    st.error(f"등록 실패: {e}")
+                if _state == "already":
+                    _b = _ecfg.get("base_url", "").rstrip("/")
+                    _body = (f"이미 구독 중이세요. 종목을 수정하려면 이 링크로 접속하세요:\n"
+                             f"{_b}/?edit={_tok}\n\n수신거부: {_b}/?unsub={_tok}")
+                    _ok, _msg = emailer.send("[포트폴리오] 종목 수정 링크", _body, _ecfg,
+                                             recipient=_pub_email)
+                    if _ok:
+                        st.info("이미 구독 중이에요. **종목 수정 링크**를 메일로 보내드렸어요!")
+                    else:
+                        st.info("이미 구독 중인 이메일이에요.")
+                elif _state:
+                    _b = _ecfg.get("base_url", "").rstrip("/")
+                    _body = (
+                        "포트폴리오 리포트 구독을 신청하셨습니다.\n\n"
+                        f"① 아래 링크를 클릭하면 구독이 확정됩니다:\n{_b}/?confirm={_tok}\n\n"
+                        f"② 나중에 종목을 바꾸려면 이 링크로 접속하세요(북마크 추천):\n{_b}/?edit={_tok}\n\n"
+                        "본인이 신청하지 않았다면 이 메일을 무시하세요.\n— 포트폴리오 AI 리포트")
+                    _ok, _msg = emailer.send("[구독 확인] 포트폴리오 리포트", _body, _ecfg,
+                                             recipient=_pub_email)
+                    if _ok:
+                        st.success("확인 메일을 보냈어요! 편지함의 ① 링크를 클릭하면 구독 완료됩니다.")
+                    else:
+                        st.error(f"확인 메일 발송 실패: {_msg}")
+
+        # 이미 구독한 사람용: 이메일만 넣으면 '종목 수정 링크'를 메일로
+        with st.expander("✏️ 이미 구독했어요 — 종목 수정하기"):
+            st.caption("가입한 이메일을 넣으면 '종목 수정 링크'를 메일로 보내드려요.")
+            _mng_email = st.text_input("가입한 이메일", key="mng_email")
+            if st.button("🔗 종목 수정 링크 받기"):
+                try:
+                    _mrow = store.get_by_email(_mng_email)
+                except Exception:  # noqa: BLE001
+                    _mrow = None
+                if not subscribers.valid_email(_mng_email):
+                    st.error("올바른 이메일을 입력하세요.")
+                elif not _mrow:
+                    st.error("등록되지 않은 이메일이에요. 위에서 새로 구독해 주세요.")
+                else:
+                    _b = _ecfg.get("base_url", "").rstrip("/")
+                    _bd = (f"종목 수정 링크입니다:\n{_b}/?edit={_mrow['token']}\n\n"
+                           f"수신거부: {_b}/?unsub={_mrow['token']}")
+                    _ok, _msg = emailer.send("[포트폴리오] 종목 수정 링크", _bd, _ecfg,
+                                             recipient=_mng_email)
+                    if _ok:
+                        st.success("수정 링크를 메일로 보냈어요! 편지함을 확인하세요.")
+                    else:
+                        st.error(f"발송 실패: {_msg}")
     st.stop()
+
+# ══ 여기서부터 관리자(소유자) 전용 대시보드 ═══════════════════════════
 
 with st.sidebar:
     st.header("⚙️ 설정")
