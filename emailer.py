@@ -51,6 +51,18 @@ def save_config(cfg: dict) -> None:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+def is_configured(cfg: dict | None = None) -> bool:
+    """발송 준비 완료 여부. 백엔드별 자격증명을 확인한다
+    (gmail=앱비밀번호, brevo/sendgrid=API 키)."""
+    cfg = cfg or load_config()
+    if not cfg.get("sender"):
+        return False
+    backend = (cfg.get("email_backend") or "gmail").lower()
+    if backend in ("brevo", "sendgrid"):
+        return bool(cfg.get("api_key"))
+    return bool(cfg.get("app_password"))
+
+
 def send(subject: str, body: str, cfg: dict | None = None,
          recipient: str | None = None) -> tuple[bool, str]:
     """메일 발송. 백엔드(gmail/brevo/sendgrid)에 따라 발송 경로가 달라진다.

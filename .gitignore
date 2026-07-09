@@ -11,6 +11,8 @@ watch_targets.json
 watchlist.json
 # 구독자 이메일(개인정보)
 subscribers.json
+# 클라우드에 붙여넣을 시크릿(로컬 임시)
+_secrets_to_paste.txt
 
 # === 생성물/캐시/로그 ===
 cache/

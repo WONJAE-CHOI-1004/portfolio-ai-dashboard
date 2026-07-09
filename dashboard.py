@@ -83,7 +83,7 @@ with st.expander("📬 리포트 이메일 구독하기",
     if st.button("구독 신청"):
         if not subscribers.valid_email(_sub_email):
             st.error("올바른 이메일 주소를 입력하세요.")
-        elif not (_ecfg.get("sender") and _ecfg.get("app_password")):
+        elif not emailer.is_configured(_ecfg):
             st.error("아직 발송 설정이 안 됐어요. (관리자 문의)")
         else:
             _state, _tok = subscribers.subscribe(_sub_email)
