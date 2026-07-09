@@ -87,7 +87,19 @@ if "confirm" in _qp:
     except Exception:  # noqa: BLE001
         _ok, _em = False, ""
     if _ok:
-        st.success(f"✅ 구독이 확정되었습니다: {_em} — 이제 정기 리포트를 보내드려요!")
+        st.success(f"✅ 구독이 확정되었습니다: {_em}")
+        # 확인 즉시 첫 맞춤 리포트를 바로 발송 (기다림 없이 가치 체험)
+        with st.spinner("첫 맞춤 리포트를 만들어 보내는 중... (약 30초)"):
+            try:
+                import reports
+                _row = store.get_by_token(_qp["confirm"])
+                _sok, _smsg = reports.send_one(_row, _ecfg.get("base_url", ""))
+            except Exception as e:  # noqa: BLE001
+                _sok, _smsg = False, str(e)
+        if _sok:
+            st.success("📧 첫 리포트를 메일로 보냈어요! 편지함(+스팸함)을 확인하세요.")
+        else:
+            st.info(f"구독은 완료됐어요. 리포트는 곧 정기 발송돼요. ({_smsg})")
     else:
         st.error("확인 링크가 유효하지 않아요.")
 if "unsub" in _qp:
@@ -158,7 +170,15 @@ else:
                 _state, _tok = None, ""
                 st.error(f"등록 실패: {e}")
             if _state == "already":
-                st.info("이미 구독 중인 이메일이에요. 종목을 바꾸려면 확인 메일의 '수정' 링크를 쓰세요.")
+                _b = _ecfg.get("base_url", "").rstrip("/")
+                _body = (f"이미 구독 중이세요. 종목을 수정하려면 이 링크로 접속하세요:\n"
+                         f"{_b}/?edit={_tok}\n\n수신거부: {_b}/?unsub={_tok}")
+                _ok, _msg = emailer.send("[포트폴리오] 종목 수정 링크", _body, _ecfg,
+                                         recipient=_pub_email)
+                if _ok:
+                    st.info("이미 구독 중이에요. **종목 수정 링크**를 메일로 보내드렸어요!")
+                else:
+                    st.info("이미 구독 중인 이메일이에요.")
             elif _state:
                 _b = _ecfg.get("base_url", "").rstrip("/")
                 _body = (
@@ -172,6 +192,30 @@ else:
                     st.success("확인 메일을 보냈어요! 편지함의 ① 링크를 클릭하면 구독 완료됩니다.")
                 else:
                     st.error(f"확인 메일 발송 실패: {_msg}")
+
+    # 이미 구독한 사람용: 이메일만 넣으면 '종목 수정 링크'를 메일로
+    with st.expander("✏️ 이미 구독했어요 — 종목 수정하기"):
+        st.caption("가입한 이메일을 넣으면 '종목 수정 링크'를 메일로 보내드려요.")
+        _mng_email = st.text_input("가입한 이메일", key="mng_email")
+        if st.button("🔗 종목 수정 링크 받기"):
+            try:
+                _mrow = store.get_by_email(_mng_email)
+            except Exception:  # noqa: BLE001
+                _mrow = None
+            if not subscribers.valid_email(_mng_email):
+                st.error("올바른 이메일을 입력하세요.")
+            elif not _mrow:
+                st.error("등록되지 않은 이메일이에요. 위에서 새로 구독해 주세요.")
+            else:
+                _b = _ecfg.get("base_url", "").rstrip("/")
+                _bd = (f"종목 수정 링크입니다:\n{_b}/?edit={_mrow['token']}\n\n"
+                       f"수신거부: {_b}/?unsub={_mrow['token']}")
+                _ok, _msg = emailer.send("[포트폴리오] 종목 수정 링크", _bd, _ecfg,
+                                         recipient=_mng_email)
+                if _ok:
+                    st.success("수정 링크를 메일로 보냈어요! 편지함을 확인하세요.")
+                else:
+                    st.error(f"발송 실패: {_msg}")
 
 # ── 소유자 인증 게이트 (owner_password 설정 시에만 작동; 로컬은 통과) ──
 _owner_pw = _ecfg.get("owner_password", "")
