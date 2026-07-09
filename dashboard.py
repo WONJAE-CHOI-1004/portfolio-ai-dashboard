@@ -69,12 +69,16 @@ _ecfg = emailer.load_config()
 _qp = st.query_params
 if "confirm" in _qp:
     _ok, _em = subscribers.confirm(_qp["confirm"])
-    st.success(f"✅ 구독이 확정되었습니다: {_em}") if _ok \
-        else st.error("확인 링크가 유효하지 않거나 만료되었습니다.")
+    if _ok:
+        st.success(f"✅ 구독이 확정되었습니다: {_em}")
+    else:
+        st.error("확인 링크가 유효하지 않거나 만료되었습니다.")
 if "unsub" in _qp:
     _ok, _em = subscribers.unsubscribe(_qp["unsub"])
-    st.info(f"수신거부되었습니다: {_em} — 더 이상 메일을 보내지 않아요.") if _ok \
-        else st.error("수신거부 링크가 유효하지 않습니다.")
+    if _ok:
+        st.info(f"수신거부되었습니다: {_em} — 더 이상 메일을 보내지 않아요.")
+    else:
+        st.error("수신거부 링크가 유효하지 않습니다.")
 
 with st.expander("📬 리포트 이메일 구독하기",
                  expanded=("confirm" in _qp or "unsub" in _qp)):
@@ -92,8 +96,10 @@ with st.expander("📬 리포트 이메일 구독하기",
             else:
                 _ok, _msg = subscribers.send_confirmation(
                     _sub_email, _tok, _ecfg.get("base_url", ""), _ecfg)
-                st.success("확인 메일을 보냈어요! 편지함의 링크를 클릭하면 구독 완료됩니다.") if _ok \
-                    else st.error(f"확인 메일 발송 실패: {_msg}")
+                if _ok:
+                    st.success("확인 메일을 보냈어요! 편지함의 링크를 클릭하면 구독 완료됩니다.")
+                else:
+                    st.error(f"확인 메일 발송 실패: {_msg}")
 
 # ── 소유자 인증 게이트 (owner_password 설정 시에만 작동; 로컬은 통과) ──
 _owner_pw = _ecfg.get("owner_password", "")
