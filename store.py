@@ -127,6 +127,14 @@ def unsubscribe(token: str) -> tuple[bool, str]:
     return True, row["email"]
 
 
+def set_subscribed(email: str, on: bool) -> None:
+    """정기 이메일 구독 on/off (이메일 확인 링크 없이 토글)."""
+    fields = {"status": "confirmed"} if on else {"status": "unsubscribed"}
+    if on:
+        fields["confirmed_at"] = _now()
+    _patch(email, fields)
+
+
 def update_holdings(token: str, holdings: list) -> tuple[bool, str]:
     row = get_by_token(token)
     if not row:
