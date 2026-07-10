@@ -153,6 +153,14 @@ def resolve_ticker(query: str, max_results: int = 6) -> list[dict]:
     query = (query or "").strip()
     if not query:
         return []
+    # 한국 종목 한글명 우선 (야후 검색이 한글명을 못 찾음)
+    try:
+        import krx
+        kr = krx.korean_ticker(query)
+        if kr:
+            return [{"symbol": kr, "name": query, "exchange": "KRX", "type": "EQUITY"}]
+    except Exception:
+        pass
     out: list[dict] = []
     try:
         quotes = yf.Search(query, max_results=max_results).quotes
