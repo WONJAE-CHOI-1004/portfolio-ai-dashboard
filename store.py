@@ -135,6 +135,13 @@ def set_subscribed(email: str, on: bool) -> None:
     _patch(email, fields)
 
 
+def save_result(email: str, result: dict) -> None:
+    """분석 결과를 사용자에 저장(재로그인 시 불러오기용). numpy 등도 안전하게 직렬화."""
+    import json as _json
+    safe = _json.loads(_json.dumps(result, default=str))
+    _patch(email, {"last_result": safe, "last_run_at": _now()})
+
+
 def update_holdings(token: str, holdings: list) -> tuple[bool, str]:
     row = get_by_token(token)
     if not row:

@@ -122,6 +122,10 @@ _user_holdings = (_urow or {}).get("holdings") or []
 _subscribed = bool(_urow and _urow.get("status") == "confirmed")
 _is_owner = (_email == (_ecfg.get("sender") or "").strip().lower())
 
+# 지난 분석 결과 불러오기 (재로그인 시 이전 실행이 그대로 보이게)
+if not st.session_state.get("result") and _urow and _urow.get("last_result"):
+    st.session_state.result = _urow["last_result"]
+
 with st.sidebar:
     st.header("👤 내 계정")
     st.write(f"**{_email}**")
@@ -215,8 +219,12 @@ if do_run:
             progress=lambda f, m: bar.progress(min(f, 1.0), text=m))
         st.session_state.result = result
         st.session_state.pop("deep_cache", None)
+        try:  # 결과를 내 계정에 저장 (다음 로그인 시 복원)
+            store.save_result(_email, result)
+        except Exception:  # noqa: BLE001
+            pass
         bar.empty()
-        st.toast("분석 완료!")
+        st.toast("분석 완료! (결과 저장됨)")
     except Exception as e:  # noqa: BLE001
         bar.empty()
         st.error(f"분석 중 오류: {e}")
