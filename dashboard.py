@@ -376,8 +376,11 @@ corr = result.get("correlation")
 if corr and len(corr["tickers"]) >= 2:
     df = pd.DataFrame(corr["matrix"], index=corr["tickers"], columns=corr["tickers"])
     st.markdown("**① 일간 수익률 상관계수** (1에 가까울수록 같이 움직임, 낮/음수일수록 분산·헤지 효과)")
-    st.dataframe(df.style.background_gradient(cmap="RdYlGn_r", vmin=-1, vmax=1)
-                 .format("{:.2f}"), use_container_width=True)
+    try:  # 색 히트맵(matplotlib 필요). 없으면 일반 표로 대체.
+        st.dataframe(df.style.background_gradient(cmap="RdYlGn_r", vmin=-1, vmax=1)
+                     .format("{:.2f}"), use_container_width=True)
+    except Exception:  # noqa: BLE001
+        st.dataframe(df.round(2), use_container_width=True)
 
 # 다중공선성 · 분산 진단 (쌍별 상관을 넘어 '전체 구조' 점검)
 diag = result.get("diagnostics")
