@@ -70,5 +70,5 @@ def value_series(holdings: list[dict], period: str = "6mo") -> pd.DataFrame | No
     if df.empty:
         return None
     df["손익"] = df["평가금액"] - df["투자원금"]
-    df["손익률(%)"] = (df["평가금액"] / df["투자원금"] - 1) * 100
+    df["손익률(%)"] = (df["평가금액"] / df["투자원금"].replace(0, float("nan")) - 1) * 100
     return df

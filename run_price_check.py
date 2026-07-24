@@ -77,7 +77,7 @@ def main() -> int:
         try:
             import emailer
             cfg = emailer.load_config()
-            if cfg.get("alerts_enabled") and cfg.get("sender") and cfg.get("app_password"):
+            if cfg.get("alerts_enabled") and emailer.is_configured(cfg):
                 body = "관심 매수가에 도달했습니다.\n\n" + "\n".join(lines) + \
                        "\n\n— 참고용 알림이며 투자 판단·책임은 본인에게 있습니다."
                 ok, m = emailer.send("📉 관심 매수가 도달 알림", body, cfg)

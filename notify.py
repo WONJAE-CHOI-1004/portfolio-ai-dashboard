@@ -9,9 +9,15 @@ from __future__ import annotations
 import subprocess
 
 
+def _ps_escape(s: str) -> str:
+    """PowerShell 큰따옴표 문자열 안전화. 백틱→$→"의 순서를 지켜야
+    나중에 이스케이프한 백틱이 다시 이스케이프되는 걸 막을 수 있다."""
+    return s.replace("`", "``").replace("$", "`$").replace('"', '`"')
+
+
 def notify(title: str, message: str, seconds: int = 12) -> bool:
-    title = title.replace('"', "'")
-    message = message.replace('"', "'")
+    title = _ps_escape(title)
+    message = _ps_escape(message)
     ps = (f'$w = New-Object -ComObject Wscript.Shell; '
           f'$w.Popup("{message}", {seconds}, "{title}", 64) | Out-Null')
     try:

@@ -136,10 +136,10 @@ def gemini_json(prompt: str, model: str | None = None) -> dict:
         raw = raw.split("```", 2)[1]
         if raw.lstrip().startswith("json"):
             raw = raw.lstrip()[4:]
-    # 첫 { ~ 마지막 } 사이만 취함
-    s, e = raw.find("{"), raw.rfind("}")
-    if s >= 0 and e > s:
-        raw = raw[s:e + 1]
+    # 객체({...}) 또는 배열([...]) 블록만 추출 (잡텍스트/코드펜스 잔여물 제거)
+    m = re.search(r"(\{.*\}|\[.*\])", raw, re.DOTALL)
+    if m:
+        raw = m.group(1)
     return json.loads(raw)
 
 

@@ -15,11 +15,17 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import secrets
 
 import requests
 
 TABLE = "subscribers"
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def valid_email(email: str) -> bool:
+    return bool(_EMAIL_RE.match((email or "").strip()))
 
 
 def _ensure_env() -> None:

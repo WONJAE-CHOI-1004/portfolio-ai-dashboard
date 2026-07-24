@@ -48,7 +48,8 @@ def _min_variance(cov: np.ndarray) -> np.ndarray:
     bnds = tuple((0.0, 1.0) for _ in range(n))
     res = minimize(lambda w: w @ cov @ w, w0, method="SLSQP",
                    bounds=bnds, constraints=cons)
-    return res.x / res.x.sum()
+    s = res.x.sum()
+    return res.x / s if s > 0 else w0  # 미수렴(합=0) 시 동일가중 폴백
 
 
 def _risk_parity(cov: np.ndarray) -> np.ndarray:
@@ -64,7 +65,8 @@ def _risk_parity(cov: np.ndarray) -> np.ndarray:
     cons = ({"type": "eq", "fun": lambda w: w.sum() - 1},)
     bnds = tuple((1e-4, 1.0) for _ in range(n))
     res = minimize(obj, w0, method="SLSQP", bounds=bnds, constraints=cons)
-    return res.x / res.x.sum()
+    s = res.x.sum()
+    return res.x / s if s > 0 else w0  # 미수렴(합=0) 시 동일가중 폴백
 
 
 def rebalance(tickers: list[str], current_weights: dict[str, float] | None = None,

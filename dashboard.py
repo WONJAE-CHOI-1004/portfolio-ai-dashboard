@@ -19,7 +19,6 @@ import common
 import pipeline
 import analyzer
 import emailer
-import subscribers
 import store
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -103,7 +102,7 @@ if not st.session_state.get("user_email"):
                "원하면 '정기 이메일 리포트'를 켜세요. (친구·지인용 · 본인 이메일 입력)")
     _start_email = st.text_input("이메일 주소")
     if st.button("내 대시보드 열기", type="primary"):
-        if subscribers.valid_email(_start_email):
+        if store.valid_email(_start_email):
             st.session_state.user_email = _start_email.strip().lower()
             for _k in ("result", "editor_df", "deep_cache", "reco"):
                 st.session_state.pop(_k, None)
